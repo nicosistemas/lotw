@@ -3,7 +3,7 @@ do
   LC_ALL=C awk '
     BEGIN { ORS="" ; IGNORECASE=1 }
 
-    # borrar my_iota
+    # borrar my_iota. Si coincide el patrón, salteá esta línea y pasá a la siguiente, no procesa ese campo.
     /<my_iota:/ { next }
 
     # borrar lineas vacias
