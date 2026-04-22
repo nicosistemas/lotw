@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, send_file, abort
+from datetime import datetime
 import tempfile
 import os
 import re
@@ -6,7 +7,7 @@ import re
 from lotwlo.normalizer import normalize_adif
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
+app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
 
 
 @app.route("/", methods=["GET"])
@@ -16,7 +17,7 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
-    operator = request.form.get("operator", "").strip().upper()
+    operator = request.form.get("operator", "").strip().upper().replace(" ", "")
 
     if not operator:
         abort(400, "Indicativo obligatorio")
@@ -29,18 +30,22 @@ def upload():
         abort(400, "Archivo no enviado")
 
     if not file.filename.lower().endswith((".adi", ".adif")):
-        abort(400, "Formato de archivo inválido")
+        abort(400, "Formato inválido")
 
     with tempfile.TemporaryDirectory() as tmp:
         input_path = os.path.join(tmp, "input.adi")
-        output_path = os.path.join(tmp, "output.adi")
+        output_path = os.path.join(tmp, "output.oneline.adi")
 
         file.save(input_path)
-        normalize_adif(input_path, output_path, operator)
+
+        count = normalize_adif(input_path, output_path, operator)
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        filename = f"{operator}-{timestamp}.oneline.adi"
 
         return send_file(
             output_path,
             as_attachment=True,
-            download_name=f"lotw_{operator}.adi",
+            download_name=filename,
             mimetype="text/plain",
         )

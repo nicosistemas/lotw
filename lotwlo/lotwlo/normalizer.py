@@ -1,43 +1,82 @@
 import re
+import os
 
-def normalize_adif(input_file, output_file, operator):
-    operator = operator.upper()
-    op_len = len(operator)
+ORDER = [
+    "call",
+    "qso_date",
+    "time_on",
+    "band",
+    "freq",
+    "mode",
+    "rst_sent",
+    "rst_rcvd",
+    "gridsquare",
+    "country",
+    "name",
+    "qth",
+    "distance",
+]
+def normalize_adif(input_path, output_path, operator):
+    with open(input_path, "r", encoding="utf-8", errors="ignore") as f:
+        data = f.read()
 
-    eor_re = re.compile(r"<eor>", re.IGNORECASE)
-    drop_qsl_re = re.compile(
-        r"<(lotw|eqsl)_qsl[rs]date:8>00000000",
-        re.IGNORECASE
-    )
+    parts = re.split(r"(?i)<eoh>", data, maxsplit=1)
+    if len(parts) > 1:
+        data = parts[1]
 
-    with open(input_file, "r", encoding="utf-8", errors="ignore") as fin, \
-         open(output_file, "w", encoding="utf-8") as fout:
+    data = data.replace("\n", " ").replace("\r", " ")
 
-        current_qso = []
+    records = re.split(r"(?i)<eor>", data)
 
-        for line in fin:
-            line = line.strip()
+    clean_records = []
 
-            # líneas vacías
-            if not line:
+    for rec in records:
+        rec = rec.strip()
+        if not rec:
+            continue
+
+        fields = re.findall(r"<([^:>]+):(\d+)>([^<]*)", rec, re.IGNORECASE)
+
+        d = {}
+        for k, l, v in fields:
+            k = k.lower()
+            v = v.strip()
+
+            if k.startswith("my_") or k.startswith("qrzcom_") or k.startswith("app_"):
                 continue
 
-            # <MY_IOTA>
-            if re.search(r"<my_iota:", line, re.IGNORECASE):
+            if k == "my_iota":
                 continue
 
-            # fechas LoTW / eQSL inválidas
-            if drop_qsl_re.search(line):
-                continue
+            if k not in d:
+                d[k] = v
 
-            # fin de QSO
-            if eor_re.search(line):
-                line = eor_re.sub(
-                    f"<operator:{op_len}>{operator} <eor>",
-                    line
-                )
-                current_qso.append(line)
-                fout.write(" ".join(current_qso) + "\n")
-                current_qso = []
-            else:
-                current_qso.append(line)
+        # validar mínimos
+        if not all(k in d for k in ["call", "qso_date", "time_on"]):
+            continue
+
+        if d.get("qso_date") == "00000000":
+            continue
+
+        # normalizar hora
+        d["time_on"] = d["time_on"][:4]
+
+        # construir salida
+        out = []
+
+        for k in ORDER:
+            if k in d and d[k]:
+                v = d[k]
+                out.append(f"<{k}:{len(v)}>{v}")
+
+        out.append(f"<station_callsign:{len(operator)}>{operator}")
+        out.append(f"<operator:{len(operator)}>{operator}")
+
+        clean_records.append(" ".join(out) + " <eor>")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("<ADIF_VER:5>3.1.1 <eoh>\n")
+        for r in clean_records:
+            f.write(r + "\n")
+
+    return len(clean_records)
