@@ -1,0 +1,9 @@
+version: "3.9"
+
+services:
+  lotwlo:
+    build: .
+    container_name: lotwlo
+    ports:
+      - "5010:5010"
+    restart: unless-stopped
